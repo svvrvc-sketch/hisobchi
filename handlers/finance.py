@@ -6,7 +6,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import StatesGroup, State
 from database.db import (
     add_transaction, get_summary, get_all_transactions,
-    get_active_debts, mark_debt_paid, get_budgets
+    get_active_debts, mark_debt_paid, get_budgets, add_debt
 )
 from utils.keyboards import (
     period_inline_keyboard, categories_keyboard,
@@ -28,6 +28,11 @@ class TransactionFSM(StatesGroup):
     waiting_for_payment_method = State()
     waiting_for_category = State()
     waiting_for_custom_category = State()
+    waiting_for_description = State()
+
+class DebtFSM(StatesGroup):
+    waiting_for_name = State()
+    waiting_for_amount = State()
     waiting_for_description = State()
 
 def format_number(val: float) -> str:
@@ -124,16 +129,14 @@ async def show_ai_advisor(callback: CallbackQuery):
         reply_markup=back_to_report_keyboard()
     )
 
-@router.callback_query(F.data == "view_debts")
-async def show_debts(callback: CallbackQuery):
-    user_id = callback.from_user.id
+async def get_debts_view_content(user_id: int):
+    """Qarzlar ro'yxati matni va klaviaturasini tayyorlash"""
     debts = await get_active_debts(user_id)
-    
-    given = debts["given"]
-    taken = debts["taken"]
-    tot_given = debts["total_given"]
-    tot_taken = debts["total_taken"]
-    
+    given = debts.get("given", [])
+    taken = debts.get("taken", [])
+    tot_given = debts.get("total_given", 0)
+    tot_taken = debts.get("total_taken", 0)
+
     text = (
         "🤝 <b>Qarz Daftari («Berdilar-Oldilar» hisobi)</b>\n"
         "────────────────────\n\n"
@@ -146,7 +149,7 @@ async def show_debts(callback: CallbackQuery):
             text += f"• <b>{g['person_name']}</b>: {format_number(g['amount'])} so'm{desc} <i>[{dt}]</i>\n"
     else:
         text += "<i>Haqdorlik yozuvlari yo'q.</i>\n"
-        
+
     text += f"\n🔴 <b>Siz qaytarishingiz kerak (qarzingiz):</b> -{format_number(tot_taken)} so'm\n"
     if taken:
         for t in taken:
@@ -155,35 +158,168 @@ async def show_debts(callback: CallbackQuery):
             text += f"• <b>{t['person_name']}</b>: {format_number(t['amount'])} so'm{desc} <i>[{dt}]</i>\n"
     else:
         text += "<i>Qarz majburiyatlari yo'q.</i>\n"
-        
+
     text += (
-        "\n💡 <i>Yangi qarz qo'shish uchun shunchaki yozing yoki ovoz yuboring:</i>\n"
-        "• <i>«Akromga 300 ming qarz berdim»</i>\n"
-        "• <i>«Sardordan 500 ming qarz oldim»</i>\n"
-        "• <i>«Akrom qarzini qaytardi»</i>\n\n"
-        "Qarz qaytarilgan bo'lsa, quyidagi tugma orqali uni yopishingiz mumkin 👇"
+        "\n💡 <b>Qarz qo'shish usullari:</b>\n"
+        "• Pastdagi <b>«➕ Qarz berdim»</b> yoki <b>«➖ Qarz oldim»</b> tugmasini bosing\n"
+        "• Yoki to'g'ridan-to'g'ri yozing: <i>«Sardorga 200 ming qarz berdim»</i>\n\n"
+        "<i>Qarz qaytarilgan bo'lsa, quyidagi ro'yxatdan yopishingiz mumkin:</i>"
     )
-    
-    await callback.message.edit_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=debts_inline_keyboard(debts)
-    )
+    return text, debts_inline_keyboard(debts)
+
+@router.message(F.text.in_(["🤝 Qarzlar bo'limi", "🤝 Qarzlar", "/debts", "/qarzlar"]))
+async def cmd_debts_menu(message: Message, state: FSMContext):
+    """Qarzlar bo'limini menyu tugmasidan ochish"""
+    await state.clear()
+    text, kb = await get_debts_view_content(message.from_user.id)
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
+
+@router.callback_query(F.data == "view_debts")
+async def show_debts(callback: CallbackQuery):
+    text, kb = await get_debts_view_content(callback.from_user.id)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        await callback.message.answer(text, parse_mode="HTML", reply_markup=kb)
     await callback.answer()
+
+@router.callback_query(F.data == "back_to_main_menu")
+async def callback_back_to_main_menu(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await callback.message.answer("💼 Asosiy menyudasiz:", reply_markup=main_menu_keyboard())
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("add_debt_bot_"))
+async def start_add_debt_flow(callback: CallbackQuery, state: FSMContext):
+    debt_type = callback.data.replace("add_debt_bot_", "")
+    await state.clear()
+    await state.update_data(debt_type=debt_type)
+    await state.set_state(DebtFSM.waiting_for_name)
+
+    if debt_type == "given":
+        prompt = (
+            "🟢 <b>Qarz berdim (Haqdorlik)</b>\n\n"
+            "Kimga qarz berdingiz? Iltimos, shaxsning ismini kiriting:\n"
+            "<i>(Masalan: Sardor, Akrom, Jamshid)</i>"
+        )
+    else:
+        prompt = (
+            "🔴 <b>Qarz oldim (Majburiyat)</b>\n\n"
+            "Kimdan qarz oldingiz? Iltimos, shaxsning ismini kiriting:\n"
+            "<i>(Masalan: Sardor, Akrom, Jamshid)</i>"
+        )
+
+    await callback.message.answer(prompt, parse_mode="HTML", reply_markup=cancel_inline_keyboard())
+    await callback.answer()
+
+@router.message(DebtFSM.waiting_for_name)
+async def process_debt_name(message: Message, state: FSMContext):
+    name = message.text.strip()
+    if not name or len(name) < 2:
+        await message.answer("⚠️ Iltimos, to'g'ri ism kiriting:", reply_markup=cancel_inline_keyboard())
+        return
+
+    await state.update_data(person_name=name)
+    await state.set_state(DebtFSM.waiting_for_amount)
+
+    data = await state.get_data()
+    d_type = data.get("debt_type", "given")
+    label = "berdingiz" if d_type == "given" else "oldingiz"
+    await message.answer(
+        f"👤 Shaxs: <b>{name}</b>\n\n"
+        f"💰 Qancha summa {label}? Summani kiriting:\n"
+        f"<i>(Masalan: 150000 yoki 150 ming)</i>",
+        parse_mode="HTML",
+        reply_markup=cancel_inline_keyboard()
+    )
+
+@router.message(DebtFSM.waiting_for_amount)
+async def process_debt_amount(message: Message, state: FSMContext):
+    val = parse_amount(message.text)
+    if not val or val <= 0:
+        await message.answer(
+            "⚠️ Summani to'g'ri tushunmadim. Iltimos raqam yoki matn bilan yozing (Masalan: <i>150000</i> yoki <i>150 ming</i>):",
+            parse_mode="HTML",
+            reply_markup=cancel_inline_keyboard()
+        )
+        return
+
+    await state.update_data(amount=val)
+    await state.set_state(DebtFSM.waiting_for_description)
+
+    data = await state.get_data()
+    name = data.get("person_name", "")
+    await message.answer(
+        f"👤 Shaxs: <b>{name}</b>\n"
+        f"💵 Summa: <b>{format_number(val)} so'm</b>\n\n"
+        f"📝 <b>Qarz uchun izoh yoki qaytarish muddatini kiriting:</b>\n"
+        f"<i>(Masalan: «Oy oxirigacha» yoki «Kvartira to'loviga»)\n"
+        f"Agar izoh kerak bo'lmasa, pastdagi «⏭ O'tkazib yuborish» tugmasini bosing:</i>",
+        parse_mode="HTML",
+        reply_markup=skip_description_keyboard()
+    )
+
+@router.callback_query(DebtFSM.waiting_for_description, F.data == "skip_description")
+async def process_skip_debt_desc(callback: CallbackQuery, state: FSMContext):
+    await save_debt_from_fsm(callback.message, callback.from_user.id, state, "")
+    await callback.answer()
+
+@router.message(DebtFSM.waiting_for_description)
+async def process_debt_desc(message: Message, state: FSMContext):
+    desc = message.text.strip() if message.text else ""
+    await save_debt_from_fsm(message, message.from_user.id, state, desc)
+
+async def save_debt_from_fsm(message: Message, user_id: int, state: FSMContext, desc: str):
+    data = await state.get_data()
+    await state.clear()
+
+    d_type = data.get("debt_type", "given")
+    name = data.get("person_name", "Noma'lum")
+    amount = data.get("amount", 0)
+
+    await add_debt(
+        user_id=user_id,
+        person_name=name,
+        debt_type=d_type,
+        amount=amount,
+        description=desc
+    )
+
+    type_label = "🟢 <b>Qarz berildi (haqqingiz):</b>" if d_type == "given" else "🔴 <b>Qarz olindi (qarzingiz):</b>"
+    desc_str = f"\n📝 Izoh: <i>{desc}</i>" if desc else ""
+
+    confirm_text = (
+        f"✅ <b>Qarz muvaffaqiyatli saqlandi!</b>\n\n"
+        f"{type_label}\n"
+        f"👤 Shaxs: <b>{name}</b>\n"
+        f"💰 Summa: <b>{format_number(amount)} so'm</b>{desc_str}"
+    )
+
+    text, kb = await get_debts_view_content(user_id)
+    await message.answer(confirm_text, parse_mode="HTML")
+    await message.answer(text, parse_mode="HTML", reply_markup=kb)
 
 @router.callback_query(F.data.startswith("pay_debt_"))
 async def process_pay_debt(callback: CallbackQuery):
     debt_id = int(callback.data.replace("pay_debt_", ""))
     user_id = callback.from_user.id
-    
+
     success = await mark_debt_paid(debt_id, user_id)
     if success:
         await callback.answer("✅ Qarz muvaffaqiyatli yopildi!", show_alert=True)
     else:
         await callback.answer("⚠️ Qarz topilmadi yoki allaqachon yopilgan.", show_alert=True)
-        
+
     # Ro'yxatni yangilash
-    await show_debts(callback)
+    text, kb = await get_debts_view_content(user_id)
+    try:
+        await callback.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
+    except Exception:
+        pass
 
 @router.callback_query(F.data == "view_budgets")
 async def show_budgets(callback: CallbackQuery):

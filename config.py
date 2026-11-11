@@ -8,7 +8,7 @@ load_dotenv(BASE_DIR / ".env")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
 ADMIN_ID = int(os.getenv("ADMIN_ID", "0")) if os.getenv("ADMIN_ID", "0").isdigit() else 0
-WEBAPP_URL = os.getenv("WEBAPP_URL", "https://stale-bears-sneeze.loca.lt").strip()
+WEBAPP_URL = os.getenv("WEBAPP_URL", "https://hisobchi-mu1x.onrender.com").strip()
 
 # Twilio Voice Calling sozlamalari
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID", "").strip()

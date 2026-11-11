@@ -226,9 +226,15 @@ function setupEventListeners() {
         });
     });
 
-    // Add Transaction
+    // Add Transaction / Qarz / Byudjet smart FAB
     document.getElementById("fabAddTransaction").addEventListener("click", () => {
-        openModal("modalAddTransaction");
+        if (state.activeTab === "debts") {
+            openModal("modalAddDebt");
+        } else if (state.activeTab === "budgets") {
+            openModal("modalSetBudget");
+        } else {
+            openModal("modalAddTransaction");
+        }
     });
 
     // Form Handlers
@@ -453,16 +459,23 @@ async function loadDebts() {
         const debts = await res.json();
         state.debts = debts;
 
-        DOM.debtTotalGiven.textContent = `${formatNumber(debts.total_given)} so'm`;
-        DOM.debtTotalTaken.textContent = `${formatNumber(debts.total_taken)} so'm`;
+        const totGiven = (debts && debts.total_given) ? debts.total_given : 0;
+        const totTaken = (debts && debts.total_taken) ? debts.total_taken : 0;
+
+        DOM.debtTotalGiven.textContent = `${formatNumber(totGiven)} so'm`;
+        DOM.debtTotalTaken.textContent = `${formatNumber(totTaken)} so'm`;
 
         DOM.debtsList.innerHTML = "";
-        const allDebts = [...debts.given, ...debts.taken];
+        const givenList = (debts && Array.isArray(debts.given)) ? debts.given : [];
+        const takenList = (debts && Array.isArray(debts.taken)) ? debts.taken : [];
+        const allDebts = [...givenList, ...takenList];
 
         if (allDebts.length === 0) {
             DOM.debtsList.innerHTML = `
-                <div style="text-align: center; color: var(--text-muted); padding: 24px 0; font-size: 13px;">
-                    Faol qarzlar yo'q
+                <div style="text-align: center; color: var(--text-muted); padding: 32px 16px;">
+                    <div style="font-size: 28px; margin-bottom: 8px;">🤝</div>
+                    <div style="font-size: 14px; font-weight: 600; color: var(--primary);">Faol qarzlar yo'q</div>
+                    <div style="font-size: 12px; margin-top: 4px; color: var(--text-muted);">Yangi qarz qo'shish uchun yuqoridagi «+ Qarz qo'shish» tugmasini bosing</div>
                 </div>
             `;
             return;
@@ -471,21 +484,23 @@ async function loadDebts() {
         allDebts.forEach(d => {
             const isGiven = d.debt_type === "given";
             const tag = isGiven ? "Menga berishi kerak" : "Men berishim kerak";
-            const personName = cleanText(d.person_name);
+            const tagColor = isGiven ? "var(--income-color)" : "var(--expense-color)";
+            const personName = cleanText(d.person_name) || "Noma'lum";
             const initial = personName.charAt(0).toUpperCase() || "Q";
             const desc = cleanText(d.description) || "Izohsiz";
+            const dateStr = d.created_at ? d.created_at.slice(0, 10) : "";
 
             const item = document.createElement("div");
             item.className = "tx-item";
             item.innerHTML = `
-                <div class="tx-icon-pill">${initial}</div>
+                <div class="tx-icon-pill" style="background: ${isGiven ? 'rgba(4,120,87,0.1)' : 'rgba(239,68,68,0.1)'}; color: ${tagColor}; font-weight: 700;">${initial}</div>
                 <div class="tx-details">
                     <div class="tx-title">${personName}</div>
-                    <div class="tx-meta">${tag} • ${desc}</div>
+                    <div class="tx-meta"><span style="color:${tagColor};font-weight:500;">${tag}</span> • ${desc} ${dateStr ? `• ${dateStr}` : ''}</div>
                 </div>
                 <div style="text-align: right;">
-                    <div class="tx-amount" style="margin-bottom: 6px;">${formatNumber(d.amount)} so'm</div>
-                    <button class="btn-secondary" style="height: 32px; padding: 0 14px; font-size: 12px; border-radius: 16px;" data-id="${d.id}">To'landi</button>
+                    <div class="tx-amount" style="margin-bottom: 6px; color: ${tagColor};">${formatNumber(d.amount)} so'm</div>
+                    <button class="btn-secondary" style="height: 30px; padding: 0 12px; font-size: 11px; border-radius: 15px;" data-id="${d.id}">To'landi</button>
                 </div>
             `;
 
@@ -494,6 +509,11 @@ async function loadDebts() {
         });
     } catch (e) {
         console.error("Load debts error:", e);
+        DOM.debtsList.innerHTML = `
+            <div style="text-align: center; color: var(--text-muted); padding: 24px 0; font-size: 13px;">
+                Qarzlarni yuklashda xatolik yuz berdi. Qayta urinib ko'ring.
+            </div>
+        `;
     }
 }
 
@@ -610,6 +630,14 @@ function setupAddTransactionForm() {
     const amountInput = document.getElementById("txAmount");
     const descInput = document.getElementById("txDescription");
     const saveBtn = document.getElementById("btnSaveTransaction");
+
+    const debtBtn = document.getElementById("btnTypeDebt");
+    if (debtBtn) {
+        debtBtn.addEventListener("click", () => {
+            closeModal("modalAddTransaction");
+            openModal("modalAddDebt");
+        });
+    }
 
     renderCategoryPills();
 
@@ -948,56 +976,91 @@ function setupSmartInput() {
 }
 
 function setupDebtAndBudgetForms() {
-    document.getElementById("btnNewDebt").addEventListener("click", () => openModal("modalAddDebt"));
-    document.getElementById("btnNewBudget").addEventListener("click", () => openModal("modalSetBudget"));
+    const btnNewDebt = document.getElementById("btnNewDebt");
+    if (btnNewDebt) {
+        btnNewDebt.addEventListener("click", () => openModal("modalAddDebt"));
+    }
+    const btnNewBudget = document.getElementById("btnNewBudget");
+    if (btnNewBudget) {
+        btnNewBudget.addEventListener("click", () => openModal("modalSetBudget"));
+    }
 
     const givenBtn = document.getElementById("btnDebtGiven");
     const takenBtn = document.getElementById("btnDebtTaken");
 
-    givenBtn.addEventListener("click", () => {
-        givenBtn.classList.add("active");
-        takenBtn.classList.remove("active");
-        state.selectedDebtType = "given";
-    });
+    if (givenBtn && takenBtn) {
+        givenBtn.addEventListener("click", () => {
+            givenBtn.classList.add("active");
+            takenBtn.classList.remove("active");
+            state.selectedDebtType = "given";
+        });
 
-    takenBtn.addEventListener("click", () => {
-        takenBtn.classList.add("active");
-        givenBtn.classList.remove("active");
-        state.selectedDebtType = "taken";
-    });
+        takenBtn.addEventListener("click", () => {
+            takenBtn.classList.add("active");
+            givenBtn.classList.remove("active");
+            state.selectedDebtType = "taken";
+        });
+    }
 
-    document.getElementById("btnSaveDebt").addEventListener("click", async () => {
-        const name = cleanText(document.getElementById("debtPersonName").value);
-        const amt = parseFloat(document.getElementById("debtAmount").value);
-        const desc = cleanText(document.getElementById("debtDescription").value);
+    const saveDebtBtn = document.getElementById("btnSaveDebt");
+    if (saveDebtBtn) {
+        saveDebtBtn.addEventListener("click", async () => {
+            const nameInput = document.getElementById("debtPersonName");
+            const amtInput = document.getElementById("debtAmount");
+            const descInput = document.getElementById("debtDescription");
 
-        if (!name || !amt) return;
+            const name = cleanText(nameInput.value);
+            const rawAmt = amtInput.value.replace(/\s+/g, '');
+            const amt = parseFloat(rawAmt);
+            const desc = cleanText(descInput.value);
 
-        try {
-            const res = await fetch("/api/debts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    user_id: state.userId,
-                    person_name: name,
-                    debt_type: state.selectedDebtType,
-                    amount: amt,
-                    description: desc
-                })
-            });
-
-            if (res.ok) {
-                showToast("Qarz saqlandi");
-                closeModal("modalAddDebt");
-                document.getElementById("debtPersonName").value = "";
-                document.getElementById("debtAmount").value = "";
-                document.getElementById("debtDescription").value = "";
-                loadDebts();
+            if (!name) {
+                showToast("Iltimos, shaxsning ismini kiriting");
+                nameInput.focus();
+                return;
             }
-        } catch (e) {
-            showToast("Xatolik");
-        }
-    });
+
+            if (!amt || isNaN(amt) || amt <= 0) {
+                showToast("Iltimos, to'g'ri summa kiriting");
+                amtInput.focus();
+                return;
+            }
+
+            saveDebtBtn.disabled = true;
+            saveDebtBtn.textContent = "Saqlanmoqda...";
+
+            try {
+                const res = await fetch("/api/debts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        user_id: state.userId,
+                        person_name: name,
+                        debt_type: state.selectedDebtType || "given",
+                        amount: amt,
+                        description: desc
+                    })
+                });
+
+                if (res.ok) {
+                    showToast("✅ Qarz muvaffaqiyatli saqlandi!");
+                    closeModal("modalAddDebt");
+                    nameInput.value = "";
+                    amtInput.value = "";
+                    descInput.value = "";
+                    await loadDebts();
+                } else {
+                    showToast("⚠️ Saqlashda xatolik yuz berdi");
+                }
+            } catch (e) {
+                console.error("Save debt error:", e);
+                showToast("⚠️ Tarmoqda xatolik yuz berdi");
+            } finally {
+                saveDebtBtn.disabled = false;
+                saveDebtBtn.textContent = "Saqlash";
+            }
+        });
+    }
 
     document.getElementById("btnSaveBudget").addEventListener("click", async () => {
         const cat = cleanText(document.getElementById("budgetCategorySelect").value);

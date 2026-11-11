@@ -48,11 +48,6 @@ async def cmd_start(message: Message):
     await message.answer(
         START_TEXT, 
         parse_mode="HTML", 
-        reply_markup=webapp_inline_keyboard(user.id)
-    )
-    await message.answer(
-        "👇 <i>Pastdagi menyu orqali ham ilovani istalgan vaqtda ochishingiz mumkin:</i>",
-        parse_mode="HTML",
         reply_markup=main_menu_keyboard()
     )
 

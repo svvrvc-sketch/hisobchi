@@ -158,9 +158,12 @@
                     </div>
                 </div>
 
-                <div style="display:flex;justify-content:space-between;align-items:center;">
-                    <div style="font-size:13px;font-weight:500;color:var(--text-muted)">Faol qarzlar</div>
-                    <button class="primary-pill-btn" id="btnNewDebt" style="height:36px;padding:0 16px;font-size:12px;">+ Qarz qo'shish</button>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+                    <div style="font-size:14px;font-weight:600;color:var(--primary)">Faol qarzlar</div>
+                    <button class="primary-pill-btn" id="btnNewDebt" style="height:38px;padding:0 18px;font-size:13px;display:flex;align-items:center;gap:6px;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+                        <span>Qarz qo'shish</span>
+                    </button>
                 </div>
 
                 <div class="g section-box" style="padding:12px 24px;">
@@ -210,6 +213,7 @@
             <div class="modal-segmented-control">
                 <button type="button" class="seg-btn active" id="btnTypeExpense">Xarajat</button>
                 <button type="button" class="seg-btn" id="btnTypeIncome">Daromad</button>
+                <button type="button" class="seg-btn" id="btnTypeDebt">Qarz</button>
             </div>
 
             <div class="form-label">Summa (so'm)</div>

@@ -6,17 +6,17 @@ from aiogram.types import (
 from config import WEBAPP_URL
 
 def main_menu_keyboard() -> ReplyKeyboardMarkup:
-    """Hisobchi AI asosiy menyu klaviaturasi (Web App tugmasi bilan)"""
+    """Hisobchi AI asosiy menyu klaviaturasi"""
     kb = [
-        [
-            KeyboardButton(text="📱 Ilovani ochish", web_app=WebAppInfo(url=WEBAPP_URL))
-        ],
         [
             KeyboardButton(text="➕ Xarajat qo'shish"),
             KeyboardButton(text="💰 Daromad qo'shish")
         ],
         [
-            KeyboardButton(text="📊 Hisobot & Statistika"),
+            KeyboardButton(text="🤝 Qarzlar bo'limi"),
+            KeyboardButton(text="📊 Hisobot & Statistika")
+        ],
+        [
             KeyboardButton(text="❓ Yordam")
         ]
     ]
@@ -88,11 +88,16 @@ def period_inline_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
 def debts_inline_keyboard(debts_data: dict) -> InlineKeyboardMarkup:
-    """Qarzlar ro'yxati va ularni yopish klaviaturasi"""
-    kb = []
+    """Qarzlar ro'yxati va ularni boshqarish klaviaturasi"""
+    kb = [
+        [
+            InlineKeyboardButton(text="➕ Qarz berdim", callback_data="add_debt_bot_given"),
+            InlineKeyboardButton(text="➖ Qarz oldim", callback_data="add_debt_bot_taken")
+        ]
+    ]
     # Faol qarzlarni yopish uchun tugmalar
     all_debts = debts_data.get("given", []) + debts_data.get("taken", [])
-    for d in all_debts[:6]:  # eng oxirgi 6 ta
+    for d in all_debts[:8]:  # eng oxirgi 8 ta
         sign = "🟢" if d["debt_type"] == "given" else "🔴"
         name = d["person_name"]
         amt = f"{int(d['amount']):,}".replace(",", " ")
@@ -100,7 +105,7 @@ def debts_inline_keyboard(debts_data: dict) -> InlineKeyboardMarkup:
         kb.append([InlineKeyboardButton(text=btn_text, callback_data=f"pay_debt_{d['id']}")])
 
     kb.append([
-        InlineKeyboardButton(text="🔙 Hisobotga qaytish", callback_data="report_period_month")
+        InlineKeyboardButton(text="🔙 Asosiy menyu", callback_data="back_to_main_menu")
     ])
     return InlineKeyboardMarkup(inline_keyboard=kb)
 
